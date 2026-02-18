@@ -134,7 +134,7 @@ const ProfilScreen = ({ navigation }) => {
         </TouchableOpacity>
 
         {/* Admin Dashboard - uniquement pour les admins */}
-        {utilisateur?.nom === 'August' && (
+        {utilisateur?.isAdmin && (
           <TouchableOpacity style={styles.optionCardSimple} onPress={() => navigation.navigate('Admin')}>
             <Text style={styles.optionEmoji}>🔐</Text>
             <Text style={styles.optionTitreSimple}>Admin Dashboard</Text>

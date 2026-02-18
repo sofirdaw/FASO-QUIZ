@@ -4,6 +4,7 @@ import {
   connecterUtilisateur,
   inscrireUtilisateur,
   deconnecterUtilisateur,
+  securiserAdminAccount,
 } from '../utils/storageHybrid'; // Changement vers storageHybrid
 
 const AuthContext = createContext(null);
@@ -17,6 +18,8 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const verifierSession = async () => {
+    // tenter une migration/sécurisation du compte admin legacy 'August'
+    try { await securiserAdminAccount(); } catch {}
     try {
       const u = await getUtilisateurCourant();
       if (u) setUtilisateur(u);

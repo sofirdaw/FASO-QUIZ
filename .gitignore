@@ -16,3 +16,4 @@ npm-debug.*
 *.orig.*
 web-build/
 .metro-cache/
+.vercel

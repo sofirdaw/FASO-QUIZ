@@ -44,7 +44,7 @@ const RegisterScreen = ({ navigation }) => {
           <Text style={styles.sous}>Rejoins des milliers de joueurs 🇧🇫</Text>
 
           {[
-            { label: "Nom d'utilisateur", val: nom, set: setNom, placeholder: 'Ex: August', secure: false },
+            { label: "Nom d'utilisateur", val: nom, set: setNom, placeholder: 'Ex: Junior', secure: false },
             { label: 'Mot de passe', val: mdp, set: setMdp, placeholder: 'Au moins 4 caractères', secure: true },
             { label: 'Confirmer le mot de passe', val: mdp2, set: setMdp2, placeholder: 'Répète ton mot de passe', secure: true },
           ].map((f, i) => (

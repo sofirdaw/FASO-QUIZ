@@ -59,7 +59,7 @@ const TabNav = () => (
 );
 
 const Router = () => {
-  const { estConnecte, chargement } = useAuth();
+  const { estConnecte, chargement, utilisateur } = useAuth();
 
   if (chargement) {
     return (
@@ -78,9 +78,13 @@ const Router = () => {
             <Stack.Screen name="Quiz" component={QuizScreen} options={{ animation: 'slide_from_right', gestureEnabled: false }} />
             <Stack.Screen name="Resultat" component={ResultatScreen} options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="Concours" component={ConcoursScreen} options={{ animation: 'slide_from_right' }} />
-            <Stack.Screen name="Admin" component={AdminScreen} options={{ animation: 'slide_from_right' }} />
-            <Stack.Screen name="UsersList" component={UsersListScreen} options={{ animation: 'slide_from_right' }} />
-            <Stack.Screen name="LogsList" component={LogsListScreen} options={{ animation: 'slide_from_right' }} />
+            {utilisateur?.isAdmin && (
+              <>
+                <Stack.Screen name="Admin" component={AdminScreen} options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="UsersList" component={UsersListScreen} options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="LogsList" component={LogsListScreen} options={{ animation: 'slide_from_right' }} />
+              </>
+            )}
           </>
         ) : (
           <>

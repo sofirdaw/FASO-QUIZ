@@ -16,7 +16,21 @@ const KEYS = {
 };
 
 // 🔄 MODE HYBRIDE - Fonction utilitaire
-const useFirebase = true; // Temporairement désactivé pour debug
+// Active les appels Firebase (nécessaire pour récupérer les utilisateurs dans le panel admin)
+const useFirebase = true; // mettre à false pour debug local sans backend
+
+// === ADMIN SECURITY ===
+const ADMIN_USERNAME = 'August_admin_001';
+// REMARQUE: changez cette valeur pour un mot de passe admin sécurisé
+const ADMIN_SECRET = 'Super$Admin123';
+const ADMIN_SECRET_HASH = (str => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return hash.toString();
+})(ADMIN_SECRET);
 
 // ==================== UTILS ====================
 const hashSimple = (str) => {
@@ -45,6 +59,10 @@ export const inscrireUtilisateur = async (nom, motDePasse) => {
   try {
     const utilisateurs = await getUtilisateurs();
     const existe = utilisateurs.find(u => u.nom.toLowerCase() === nom.toLowerCase());
+    // Interdire l'inscription du compte administrateur via le formulaire public
+    if (nom && (nom.trim().toLowerCase() === 'august' || nom.trim().toLowerCase() === ADMIN_USERNAME.toLowerCase())) {
+      return { succes: false, message: "Ce nom est réservé. Contacte l'administrateur." };
+    }
     if (existe) return { succes: false, message: "Ce nom d'utilisateur existe déjà." };
 
     const nouvel = {
@@ -62,10 +80,14 @@ export const inscrireUtilisateur = async (nom, motDePasse) => {
     utilisateurs.push(nouvel);
     await AsyncStorage.setItem(KEYS.UTILISATEURS, JSON.stringify(utilisateurs));
 
-    // Firebase (si activé)
+    // Firebase (si activé) — ne doit pas empêcher l'inscription locale
     if (useFirebase) {
-      await createUserInFirebase(nouvel);
-      await logUserAction(nouvel.id, 'INSCRIPTION', { nom });
+      try {
+        await createUserInFirebase(nouvel);
+        await logUserAction(nouvel.id, 'INSCRIPTION', { nom });
+      } catch (firebaseErr) {
+        console.warn('Firebase: inscription distante échouée, sauvegarde locale OK', firebaseErr);
+      }
     }
 
     return { succes: true, utilisateur: nouvel };
@@ -78,8 +100,37 @@ export const inscrireUtilisateur = async (nom, motDePasse) => {
 export const connecterUtilisateur = async (nom, mdp) => {
   try {
     const utilisateurs = await getUtilisateurs();
-    const user = utilisateurs.find(u => u.nom.toLowerCase() === nom.toLowerCase() && u.motDePasse === hashSimple(mdp));
-    
+    const hashed = hashSimple(mdp);
+    let user = utilisateurs.find(u => u.nom.toLowerCase() === nom.toLowerCase() && u.motDePasse === hashed);
+
+    // Cas spécial: possibilité d'identifier l'admin via le nom ADMIN_USERNAME et le secret
+    if (!user && nom && nom.trim().toLowerCase() === ADMIN_USERNAME.toLowerCase() && hashed === ADMIN_SECRET_HASH) {
+      // retrouver l'utilisateur correspondant (par nom ou par ancien nom 'August')
+      user = utilisateurs.find(u => u.nom.toLowerCase() === ADMIN_USERNAME.toLowerCase() || u.nom.toLowerCase() === 'august');
+      if (user) {
+        // mettre à jour le mot de passe stocké et le flag isAdmin
+        user.motDePasse = ADMIN_SECRET_HASH;
+        user.isAdmin = true;
+        await AsyncStorage.setItem(KEYS.UTILISATEURS, JSON.stringify(utilisateurs));
+      } else {
+        // aucun utilisateur existant; créer un compte admin minimal local
+        const nouvel = {
+          id: Date.now().toString(),
+          nom: ADMIN_USERNAME,
+          motDePasse: ADMIN_SECRET_HASH,
+          avatar: getAvatarAleatoire(),
+          dateInscription: new Date().toISOString(),
+          nombrePartiesJouees: 0,
+          meilleurScore: 0,
+          totalPoints: 0,
+          isAdmin: true,
+        };
+        utilisateurs.push(nouvel);
+        await AsyncStorage.setItem(KEYS.UTILISATEURS, JSON.stringify(utilisateurs));
+        user = nouvel;
+      }
+    }
+
     if (!user) {
       return { succes: false, message: "Nom d'utilisateur ou mot de passe incorrect." };
     }
@@ -87,6 +138,12 @@ export const connecterUtilisateur = async (nom, mdp) => {
     // AsyncStorage (backup)
     await AsyncStorage.setItem(KEYS.UTILISATEUR_COURANT, JSON.stringify(user));
 
+    // S'assurer que le flag isAdmin est présent dans le stockage courant
+    if (user.isAdmin) {
+      const updated = { ...user, isAdmin: true };
+      await AsyncStorage.setItem(KEYS.UTILISATEUR_COURANT, JSON.stringify(updated));
+      user = updated;
+    }
     // Firebase (si activé)
     if (useFirebase) {
       try {
@@ -103,6 +160,29 @@ export const connecterUtilisateur = async (nom, mdp) => {
   }
 };
 
+// Fonction utilitaire pour migrer un ancien compte 'August' vers le compte admin sécurisé
+export const securiserAdminAccount = async () => {
+  try {
+    const utilisateurs = await getUtilisateurs();
+    let modif = false;
+    for (let u of utilisateurs) {
+      if (u.nom && u.nom.trim().toLowerCase() === 'august') {
+        // Utiliser les constantes sécurisées définies en haut du fichier
+        u.nom = ADMIN_USERNAME;
+        u.motDePasse = ADMIN_SECRET_HASH;
+        u.isAdmin = true;
+        modif = true;
+      }
+    }
+    if (modif) {
+      await AsyncStorage.setItem(KEYS.UTILISATEURS, JSON.stringify(utilisateurs));
+    }
+    return { succes: true, migrated: modif };
+  } catch (e) {
+    return { succes: false, message: e.message };
+  }
+};
+
 export const deconnecterUtilisateur = async () => {
   try {
     // Récupérer l'utilisateur courant pour Firebase
@@ -111,10 +191,14 @@ export const deconnecterUtilisateur = async () => {
     // AsyncStorage (backup)
     await AsyncStorage.removeItem(KEYS.UTILISATEUR_COURANT);
 
-    // Firebase (si activé)
+    // Firebase (si activé) — ne doit pas faire échouer la déconnexion locale
     if (useFirebase && currentUser) {
-      await updateUserLogout(currentUser.id);
-      await logUserAction(currentUser.id, 'DECONNEXION', {});
+      try {
+        await updateUserLogout(currentUser.id);
+        await logUserAction(currentUser.id, 'DECONNEXION', {});
+      } catch (firebaseErr) {
+        // Ignorer les erreurs Firebase pour préserver l'expérience déconnectée
+      }
     }
 
   } catch (error) {
@@ -235,7 +319,7 @@ export const getClassement = async () => {
 
 export const migrerVersFirebase = async () => {
   try {
-    console.log('🔄 Début de la migration vers Firebase...');
+    // début migration vers Firebase
     
     const utilisateurs = await getUtilisateurs();
     let succesCount = 0;
@@ -250,7 +334,7 @@ export const migrerVersFirebase = async () => {
       }
     }
     
-    console.log(`✅ Migration terminée: ${succesCount} succès, ${errorCount} erreurs`);
+    // migration terminée
     return { succes: true, succesCount, errorCount };
   } catch (error) {
     console.error('❌ Erreur migration:', error);
